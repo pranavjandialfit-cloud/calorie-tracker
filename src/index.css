@@ -1,3 +1,8 @@
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
-body { font-family: -apple-system, system-ui, Segoe UI, Roboto, Inter, Arial, sans-serif; background: #f7f8fb; }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Safe-area padding for iOS notch in standalone PWA */
+:root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+html, body, #root { height: 100%; }
+body { margin: 0; padding-top: var(--sat); padding-bottom: calc(var(--sab) + 8px); }
