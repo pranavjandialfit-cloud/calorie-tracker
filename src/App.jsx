@@ -1,27 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Calorie Tracker — Apple-like single-file React app (v0.4)
+ * Calorie Tracker — Apple-like single-file React app (v0.4.1)
  * -----------------------------------------------------------
- * v0.4 highlights
+ * v0.4.1 highlights
+ * - Theme preference: Light / Dark / System (persists, no surprise flips)
  * - Bottom tabs: Home / Log / Insights / Profile
- * - Quick Log panel (templates) + “Log your meal” sheet
- * - Meal-type chips (Breakfast/Lunch/Dinner/Snack)
- * - Insights & Profile stubs (ready to expand)
- * - Keeps fiber + polished UI from v0.3
+ * - Quick Log, meal-type chips, fiber tracking, polished UI
  */
 
 // ---------- Utilities ----------
-const LS_KEY = "ct_entries_v4"; // bump for schema (mealType)
+const LS_KEY = "ct_entries_v4"; // data key (mealType schema)
+const THEME_KEY = "ct_theme";   // 'light' | 'dark' | 'system'
+
 const todayKey = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
 const fmtTime = (d) =>
-  new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
+  new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(d);
 
 const clamp = (v, min = 0, max = 99999) => Math.min(max, Math.max(min, Number(v) || 0));
+
+const applyTheme = (mode) => {
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = mode === "dark" || (mode === "system" && prefersDark);
+  document.documentElement.classList.toggle("dark", isDark);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", isDark ? "#000000" : "#ffffff");
+};
 
 // Metric color helpers — refined, premium
 const metricColor = {
@@ -85,19 +90,18 @@ export default function App() {
   const [quickTarget, setQuickTarget] = useState({ kcal: 2000, protein: 140, carbs: 200, fat: 60, fiber: 25 });
   const [composerOpen, setComposerOpen] = useState(false);
   const [tab, setTab] = useState("home"); // 'home' | 'log' | 'insights' | 'profile'
+  const [theme, setTheme] = useState(localStorage.getItem(THEME_KEY) || "system");
 
   // Load & migrate
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
       if (Array.isArray(saved)) return setEntries(saved);
-
-      // migrate older keys
       const keys = ["ct_entries_v3", "ct_entries_v2", "ct_entries_v1"];
       for (const k of keys) {
         const prev = JSON.parse(localStorage.getItem(k) || "null");
         if (Array.isArray(prev)) {
-          const migrated = prev.map((e) => ({ fiber: 0, ...e })); // ensure fiber exists
+          const migrated = prev.map((e) => ({ fiber: 0, ...e }));
           setEntries(migrated);
           localStorage.setItem(LS_KEY, JSON.stringify(migrated));
           break;
@@ -106,9 +110,20 @@ export default function App() {
     } catch {}
   }, []);
 
+  // Persist entries
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(entries));
   }, [entries]);
+
+  // Theme handling
+  useEffect(() => {
+    applyTheme(theme);
+    localStorage.setItem(THEME_KEY, theme);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => theme === "system" && applyTheme("system");
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, [theme]);
 
   const dayEntries = useMemo(() => entries.filter((e) => e.date === activeDate), [entries, activeDate]);
   const totals = useMemo(
@@ -165,7 +180,6 @@ export default function App() {
             <SummaryBar totals={totals} target={quickTarget} setTarget={setQuickTarget} />
             <StreakAndNudge totals={totals} target={quickTarget} />
             <LogCard onOpen={() => setComposerOpen(true)} />
-
             <section className="mt-6">
               <h2 className="sr-only">Entries</h2>
               <div className="space-y-4">
@@ -207,7 +221,14 @@ export default function App() {
 
         {tab === "insights" && <InsightsView entries={entries} />}
 
-        {tab === "profile" && <SettingsView target={quickTarget} setTarget={setQuickTarget} />}
+        {tab === "profile" && (
+          <SettingsView
+            target={quickTarget}
+            setTarget={setQuickTarget}
+            theme={theme}
+            setTheme={setTheme}
+          />
+        )}
       </main>
 
       <MealComposer
@@ -241,7 +262,7 @@ function TopNav() {
         </div>
         <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/50">
           <span className="hidden sm:inline">Beta</span>
-          <span className="px-2 py-1 rounded-full border border-black/10 dark:border-white/10">v0.4</span>
+          <span className="px-2 py-1 rounded-full border border-black/10 dark:border-white/10">v0.4.1</span>
         </div>
       </div>
     </header>
@@ -498,120 +519,6 @@ function MealComposer({ open, onClose, onCreate }) {
   );
 }
 
-function EntryCard({ entry, onUpdate, onDelete, onDuplicate }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(entry);
-
-  useEffect(() => setDraft(entry), [entry]);
-
-  const save = () => {
-    onUpdate(entry.id, {
-      title: draft.title || "Meal",
-      calories: clamp(draft.calories),
-      protein: clamp(draft.protein),
-      carbs: clamp(draft.carbs),
-      fat: clamp(draft.fat),
-      fiber: clamp(draft.fiber),
-      mealType: draft.mealType || undefined,
-      notes: draft.notes?.trim() || undefined,
-    });
-    setEditing(false);
-  };
-
-  return (
-    <article className="glass p-4 rounded-3xl">
-      <div className="flex items-start gap-4">
-        <div className="relative w-24 h-24 shrink-0 rounded-2xl overflow-hidden bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10">
-          {entry.photo ? (
-            <img src={entry.photo} alt={entry.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-xs text-black/50 dark:text-white/50">No photo</div>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              {editing ? (
-                <input
-                  className="i-input !py-1 !px-2 !h-9 font-medium"
-                  value={draft.title}
-                  onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-                />
-              ) : (
-                <h3 className="text-lg font-semibold tracking-tight truncate">{entry.title}</h3>
-              )}
-              {entry.mealType && (
-                <span className="text-xs px-2 py-0.5 rounded-full border border-black/10">{entry.mealType}</span>
-              )}
-            </div>
-
-            <div className="text-xs text-black/50 dark:text-white/60 shrink-0">{entry.time}</div>
-          </div>
-
-          <div className="mt-2 grid grid-cols-5 gap-2 text-sm">
-            {editing ? (
-              <>
-                <NumMini label="kcal" value={draft.calories} onChange={(v) => setDraft((d) => ({ ...d, calories: v }))} />
-                <NumMini label="P" value={draft.protein} onChange={(v) => setDraft((d) => ({ ...d, protein: v }))} />
-                <NumMini label="C" value={draft.carbs} onChange={(v) => setDraft((d) => ({ ...d, carbs: v }))} />
-                <NumMini label="F" value={draft.fat} onChange={(v) => setDraft((d) => ({ ...d, fat: v }))} />
-                <NumMini label="Fi" value={draft.fiber} onChange={(v) => setDraft((d) => ({ ...d, fiber: v }))} />
-              </>
-            ) : (
-              <>
-                <Pill label="kcal" value={entry.calories} cls={metricColor.calories} />
-                <Pill label="P" value={entry.protein} cls={metricColor.protein} />
-                <Pill label="C" value={entry.carbs} cls={metricColor.carbs} />
-                <Pill label="F" value={entry.fat} cls={metricColor.fat} />
-                <Pill label="Fi" value={entry.fiber} cls={metricColor.fiber} />
-              </>
-            )}
-          </div>
-
-          <div className="mt-2">
-            {editing ? (
-              <input
-                className="i-input !py-1 !px-2 !h-9"
-                placeholder="Notes"
-                value={draft.notes || ""}
-                onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
-              />
-            ) : entry.notes ? (
-              <div className="text-sm text-black/60 dark:text-white/65 truncate">{entry.notes}</div>
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            {editing ? (
-              <>
-                <button className="i-btn primary" onClick={save}>
-                  Save
-                </button>
-                <button className="i-btn" onClick={() => setEditing(false)}>
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <button className="i-btn" onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-                <button className="i-btn" onClick={onDuplicate}>
-                  Duplicate
-                </button>
-                <button className="i-btn danger" onClick={onDelete}>
-                  Delete
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 // ---------- Tabs & Views ----------
 function BottomTabs({ tab, setTab, onToday, onExport, onImport }) {
   const fileRef = useRef(null);
@@ -700,11 +607,11 @@ function QuickLog({ onOpen, onTemplate }) {
 }
 
 function InsightsView({ entries }) {
-  // Simple weekly summary (last 7 days)
   const last7 = [...entries].filter((e) => {
     const d = new Date(e.date);
     const now = new Date();
     return (now - d) / 86400000 <= 6;
+    // last 7 days inclusive
   });
   const totals = last7.reduce(
     (a, e) => ({
@@ -735,19 +642,39 @@ function InsightsView({ entries }) {
   );
 }
 
-function SettingsView({ target, setTarget }) {
+function SettingsView({ target, setTarget, theme, setTheme }) {
   return (
     <section className="mt-6">
       <div className="glass rounded-3xl p-4">
         <div className="text-xl font-semibold">Settings</div>
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-3">
+
+        {/* Theme */}
+        <div className="mt-3">
+          <div className="text-sm uppercase text-black/50 dark:text-white/50">Appearance</div>
+          <div className="mt-2 flex gap-2">
+            {["light", "dark", "system"].map((m) => (
+              <button
+                key={m}
+                className={`i-btn ${theme === m ? "primary !text-white" : ""}`}
+                onClick={() => setTheme(m)}
+              >
+                {m[0].toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 text-sm text-black/60 dark:text-white/70">
+            Choose Light/Dark manually or follow System.
+          </div>
+        </div>
+
+        {/* Targets */}
+        <div className="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-3">
           <NumberField label="kcal" value={target.kcal} onChange={(v) => setTarget((t) => ({ ...t, kcal: v }))} />
           <NumberField label="protein" value={target.protein} onChange={(v) => setTarget((t) => ({ ...t, protein: v }))} />
           <NumberField label="carbs" value={target.carbs} onChange={(v) => setTarget((t) => ({ ...t, carbs: v }))} />
           <NumberField label="fat" value={target.fat} onChange={(v) => setTarget((t) => ({ ...t, fat: v }))} />
           <NumberField label="fiber" value={target.fiber} onChange={(v) => setTarget((t) => ({ ...t, fiber: v }))} />
         </div>
-        <div className="mt-4 text-sm text-black/60 dark:text-white/70">Dark mode follows system theme.</div>
       </div>
     </section>
   );
