@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Calorie Tracker — Apple-like single-file React app (v0.4.1)
+ * Calorie Tracker — Apple-like single-file React app (v0.4.2)
  * -----------------------------------------------------------
- * v0.4.1 highlights
- * - Theme preference: Light / Dark / System (persists, no surprise flips)
- * - Bottom tabs: Home / Log / Insights / Profile
- * - Quick Log, meal-type chips, fiber tracking, polished UI
+ * v0.4.2 hotfixes
+ * - Safe IDs (fallback if crypto.randomUUID() is unavailable)
+ * - Sanitize numbers on add
+ * - localStorage setItem wrapped in try/catch (prevents blank screen on quota errors)
+ * Other features from v0.4.1 remain unchanged.
  */
 
 // ---------- Utilities ----------
@@ -26,6 +27,15 @@ const applyTheme = (mode) => {
   document.documentElement.classList.toggle("dark", isDark);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", isDark ? "#000000" : "#ffffff");
+};
+
+// NEW: safe id (fallback for environments without crypto.randomUUID)
+const safeId = () => {
+  try {
+    return crypto && crypto.randomUUID ? crypto.randomUUID() : null;
+  } catch {
+    return null;
+  }
 };
 
 // Metric color helpers — refined, premium
@@ -110,9 +120,14 @@ export default function App() {
     } catch {}
   }, []);
 
-  // Persist entries
+  // Persist entries (wrapped to avoid crashing on storage errors)
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify(entries));
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(entries));
+    } catch (err) {
+      console.warn("Saving failed:", err);
+      alert("Storage save failed. Try deleting a few old entries or photos.");
+    }
   }, [entries]);
 
   // Theme handling
@@ -126,15 +141,18 @@ export default function App() {
   }, [theme]);
 
   const dayEntries = useMemo(() => entries.filter((e) => e.date === activeDate), [entries, activeDate]);
+
+  // Guard reducer against weird values (defensive)
+  const n = (v) => (Number.isFinite(v) ? v : 0);
   const totals = useMemo(
     () =>
       dayEntries.reduce(
         (acc, e) => ({
-          calories: acc.calories + e.calories,
-          protein: acc.protein + e.protein,
-          carbs: acc.carbs + e.carbs,
-          fat: acc.fat + e.fat,
-          fiber: acc.fiber + e.fiber,
+          calories: acc.calories + n(e.calories),
+          protein: acc.protein + n(e.protein),
+          carbs: acc.carbs + n(e.carbs),
+          fat: acc.fat + n(e.fat),
+          fiber: acc.fiber + n(e.fiber),
         }),
         { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
       ),
@@ -144,7 +162,7 @@ export default function App() {
   function addEntry(partial) {
     const now = new Date();
     const entry = {
-      id: crypto.randomUUID(),
+      id: safeId() || (Date.now() + Math.random().toString(16).slice(2)),
       date: activeDate,
       time: fmtTime(now),
       title: "Untitled",
@@ -155,6 +173,13 @@ export default function App() {
       fiber: 0,
       ...partial,
     };
+    // sanitize numeric fields to avoid NaN/undefined in reducers
+    entry.calories = Number(entry.calories) || 0;
+    entry.protein  = Number(entry.protein)  || 0;
+    entry.carbs    = Number(entry.carbs)    || 0;
+    entry.fat      = Number(entry.fat)      || 0;
+    entry.fiber    = Number(entry.fiber)    || 0;
+
     setEntries((prev) => [entry, ...prev]);
   }
 
@@ -262,7 +287,7 @@ function TopNav() {
         </div>
         <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/50">
           <span className="hidden sm:inline">Beta</span>
-          <span className="px-2 py-1 rounded-full border border-black/10 dark:border-white/10">v0.4.1</span>
+          <span className="px-2 py-1 rounded-full border border-black/10 dark:border-white/10">v0.4.2</span>
         </div>
       </div>
     </header>
