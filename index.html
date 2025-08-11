@@ -1,24 +1,117 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" class="">
   <head>
-    <meta name="theme-color" content="#ffffff" />
-<script>
-  (function () {
-    const KEY = 'ct_theme'; // 'light' | 'dark' | 'system'
-    const saved = localStorage.getItem(KEY) || 'system';
-    const isDark = saved === 'dark' || (saved === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.toggle('dark', isDark);
-    // keep status bar neat before React mounts
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#000000' : '#ffffff');
-  })();
-</script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Prevent theme flash -->
+    <style>
+      html:not(.dark-ready) body { visibility: hidden; }
+      html.no-theme-transition * { transition: none !important; }
+    </style>
+    <script>
+      (function () {
+        const KEY = 'ct_theme'; // 'light' | 'dark' | 'system'
+        const saved = localStorage.getItem(KEY) || 'system';
+        const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = saved === 'dark' || (saved === 'system' && prefersDark);
+
+        // avoid animated swap
+        document.documentElement.classList.add('no-theme-transition');
+
+        // set theme class BEFORE paint
+        document.documentElement.classList.toggle('dark', isDark);
+
+        // set status bar color ASAP (before React)
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) {
+          meta = document.createElement('meta');
+          meta.setAttribute('name', 'theme-color');
+          document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', isDark ? '#000000' : '#ffffff');
+
+        // allow paint now
+        document.documentElement.classList.add('dark-ready');
+
+        // re-enable transitions next tick
+        setTimeout(() => {
+          document.documentElement.classList.remove('no-theme-transition');
+        }, 0);
+      })();
+    </script>
+
+    <!-- Static theme-color fallbacks for first-ever visit -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
+
     <title>Calorie Tracker</title>
   </head>
-  <body>
+  <body class="bg-white dark:bg-neutral-900 text-black dark:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+<!DOCTYPE html>
+<html lang="en" class="">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Prevent theme flash -->
+    <style>
+      html:not(.dark-ready) body { visibility: hidden; }
+      html.no-theme-transition * { transition: none !important; }
+    </style>
+    <script>
+      (function () {
+        const KEY = 'ct_theme'; // 'light' | 'dark' | 'system'
+        const saved = localStorage.getItem(KEY) || 'system';
+        const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = saved === 'dark' || (saved === 'system' && prefersDark);
+
+        // avoid animated swap
+        document.documentElement.classList.add('no-theme-transition');
+
+        // set theme class BEFORE paint
+        document.documentElement.classList.toggle('dark', isDark);
+
+        // set status bar color ASAP (before React)
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) {
+          meta = document.createElement('meta');
+          meta.setAttribute('name', 'theme-color');
+          document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', isDark ? '#000000' : '#ffffff');
+
+        // allow paint now
+        document.documentElement.classList.add('dark-ready');
+
+        // re-enable transitions next tick
+        setTimeout(() => {
+          document.documentElement.classList.remove('no-theme-transition');
+        }, 0);
+      })();
+    </script>
+
+    <!-- Static theme-color fallbacks for first-ever visit -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icons/icon-192x192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
+
+    <title>Calorie Tracker</title>
+  </head>
+  <body class="bg-white dark:bg-neutral-900 text-black dark:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
